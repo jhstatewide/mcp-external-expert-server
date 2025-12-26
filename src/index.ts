@@ -29,6 +29,8 @@ const SYSTEM_PROMPTS = {
     "You are a planning assistant. Provide a step-by-step plan, list assumptions, and identify risks.",
   critic: process.env.DELEGATE_SYSTEM_CRITIC || 
     "You are a code critic. Identify issues, rate their severity, and suggest fixes.",
+  critique: process.env.DELEGATE_SYSTEM_CRITIQUE || 
+    "You are a devil's advocate and critical reviewer. Your role is to find flaws, weaknesses, edge cases, and potential problems. Be thorough, skeptical, and challenge assumptions. Look for: logical errors, missing edge cases, performance issues, security vulnerabilities, scalability problems, maintainability concerns, and any other potential weaknesses. Be constructive but rigorous in your critique.",
   tests: process.env.DELEGATE_SYSTEM_TESTS || 
     "You are a test design assistant. Provide a test checklist and edge cases to consider.",
   explain: process.env.DELEGATE_SYSTEM_EXPLAIN || 
@@ -76,9 +78,21 @@ async function callOllama(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  maxChars?: number
 ): Promise<string> {
   const url = `${DELEGATE_BASE_URL}/api/chat`;
+  
+  // Calculate max tokens based on maxChars if provided
+  // Rough estimate: 1 token ≈ 4 characters for English text
+  // Use the smaller of: configured maxTokens or estimated from maxChars
+  let numPredict = maxTokens;
+  if (maxChars !== undefined) {
+    // Estimate tokens from characters (conservative: 1 token = 3.5 chars to account for longer tokens)
+    const estimatedTokens = Math.floor(maxChars / 3.5);
+    // Use the smaller value to ensure we don't exceed maxChars
+    numPredict = Math.min(maxTokens, estimatedTokens);
+  }
   
   const response = await fetch(url, {
     method: "POST",
@@ -92,7 +106,7 @@ async function callOllama(
         { role: "user", content: userMessage }
       ],
       options: {
-        num_predict: maxTokens,
+        num_predict: numPredict,
         temperature
       },
       stream: false
@@ -114,7 +128,8 @@ async function callOpenAICompat(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  maxChars?: number
 ): Promise<string> {
   const url = `${DELEGATE_BASE_URL}${DELEGATE_OPENAI_PATH}`;
   
@@ -126,6 +141,17 @@ async function callOpenAICompat(
     headers["Authorization"] = `Bearer ${DELEGATE_API_KEY}`;
   }
 
+  // Calculate max tokens based on maxChars if provided
+  // Rough estimate: 1 token ≈ 4 characters for English text
+  // Use the smaller of: configured maxTokens or estimated from maxChars
+  let maxTokensToUse = maxTokens;
+  if (maxChars !== undefined) {
+    // Estimate tokens from characters (conservative: 1 token = 3.5 chars to account for longer tokens)
+    const estimatedTokens = Math.floor(maxChars / 3.5);
+    // Use the smaller value to ensure we don't exceed maxChars
+    maxTokensToUse = Math.min(maxTokens, estimatedTokens);
+  }
+
   const response = await fetch(url, {
     method: "POST",
     headers,
@@ -135,7 +161,7 @@ async function callOpenAICompat(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }
       ],
-      max_tokens: maxTokens,
+      max_tokens: maxTokensToUse,
       temperature,
       stream: false
     }),
@@ -170,8 +196,8 @@ export async function delegate(
     throw new Error("DELEGATE_MODEL environment variable is required");
   }
 
-  if (!["plan", "critic", "explain", "tests"].includes(mode)) {
-    throw new Error(`Invalid mode: ${mode}. Must be one of: plan, critic, explain, tests`);
+  if (!["plan", "critic", "critique", "explain", "tests"].includes(mode)) {
+    throw new Error(`Invalid mode: ${mode}. Must be one of: plan, critic, critique, explain, tests`);
   }
 
   const systemPrompt = SYSTEM_PROMPTS[mode as keyof typeof SYSTEM_PROMPTS];
@@ -192,6 +218,7 @@ export async function delegate(
   const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
   
   // Call appropriate provider
+  // Pass maxChars to help the model limit its output
   let result: string;
   if (delegateProvider === "ollama") {
     result = await callOllama(
@@ -199,7 +226,8 @@ export async function delegate(
       systemPrompt,
       userMessage,
       DELEGATE_MAX_TOKENS,
-      DELEGATE_TEMPERATURE
+      DELEGATE_TEMPERATURE,
+      maxCharsValue
     );
   } else if (delegateProvider === "openai_compat") {
     result = await callOpenAICompat(
@@ -207,7 +235,8 @@ export async function delegate(
       systemPrompt,
       userMessage,
       DELEGATE_MAX_TOKENS,
-      DELEGATE_TEMPERATURE
+      DELEGATE_TEMPERATURE,
+      maxCharsValue
     );
   } else {
     throw new Error(`Unknown provider: ${delegateProvider}. Must be 'ollama' or 'openai_compat'`);
@@ -232,14 +261,14 @@ const toolsListHandler = async () => {
     tools: [
       {
         name: "delegate",
-        description: "Delegate a subtask to a helper model for planning, critique, testing, or explanation",
+        description: "Delegate a subtask to a helper model for planning, critique, testing, or explanation. Note: The helper model does NOT have access to the same context as the calling model - it only receives what is explicitly passed in the 'input' and 'context' parameters, plus its inherent training knowledge. It has no access to the caller's conversation history, file contents, or other context unless explicitly provided.",
         inputSchema: {
           type: "object",
           properties: {
             mode: {
               type: "string",
-              enum: ["plan", "critic", "explain", "tests"],
-              description: "The type of delegation: plan (step-by-step plan), critic (code critique), explain (explanation), tests (test design)"
+              enum: ["plan", "critic", "critique", "explain", "tests"],
+              description: "The type of delegation: plan (step-by-step plan), critic (code critique), critique (devil's advocate - find flaws/weaknesses), explain (explanation), tests (test design)"
             },
             input: {
               type: "string",

@@ -177,6 +177,7 @@ Delegates a subtask to a helper model.
 **Modes:**
 - `plan` → step-by-step plan + assumptions + risks
 - `critic` → issues, severity, fixes
+- `critique` → devil's advocate mode - find flaws, weaknesses, edge cases, and potential problems
 - `tests` → test checklist + edge cases
 - `explain` → concise explanation
 
