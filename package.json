@@ -1,18 +1,46 @@
 {
   "name": "mcp-external-expert",
   "version": "0.2.0",
-  "private": true,
+  "description": "MCP server that allows primary LLMs to delegate sub-tasks to external expert models via APIs (Ollama, OpenAI-compatible)",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mcp-external-expert-server": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "dev": "node --enable-source-maps --loader ts-node/esm src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build"
   },
-  "bin": {
-    "mcp-external-expert-server": "./dist/index.js"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jhstatewide/mcp-external-expert-server.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "llm",
+    "delegation",
+    "ollama",
+    "openai",
+    "ai",
+    "expert-system"
+  ],
+  "author": "Joshua Harding",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -8,16 +8,15 @@ import { setupServerHandlers } from "./handlers/mcp-handlers.js";
 import { startHttpServer } from "./server/http-server.js";
 import { validateConfiguration, MCP_STDIO, MCP_HTTP } from "./config/index.js";
 import { delegate } from "./core/delegate.js";
+import { SERVER_NAME, VERSION } from "./constants.js";
 
-// Re-export utility functions for backward compatibility
 export { redactSecrets, clampText } from "./utils/text-processing.js";
 export { delegate };
 
-// Create MCP server for STDIO
 const server = new Server(
   {
-    name: "mcp-external-expert",
-    version: "0.2.0",
+    name: SERVER_NAME,
+    version: VERSION,
   },
   {
     capabilities: {
@@ -28,12 +27,9 @@ const server = new Server(
 
 setupServerHandlers(server);
 
-// Start server based on transport configuration
 async function start() {
-  // Validate configuration before starting
   validateConfiguration();
   
-  // Don't start server if running in test environment
   if (process.env.NODE_ENV === 'test') {
     return;
   }
@@ -56,7 +52,6 @@ async function start() {
   await Promise.all(promises);
 }
 
-// Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test' && !process.env.JEST_WORKER_ID) {
   start().catch((error) => {
     console.error("Fatal error:", error);

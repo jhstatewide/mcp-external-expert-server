@@ -1,11 +1,11 @@
 // MCP Server Handlers for External Expert Server
 
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { delegate } from "../core/delegate.js";
 import { redactSecrets, clampText } from "../utils/text-processing.js";
 import { DELEGATE_PROVIDER, DELEGATE_MODEL } from "../config/index.js";
 
-// Handler for listing available tools
 export const toolsListHandler = async () => {
   return {
     tools: [
@@ -40,7 +40,6 @@ export const toolsListHandler = async () => {
   };
 };
 
-// Handler for tool calls
 export const toolsCallHandler = async (request: { params: { name: string; arguments?: any } }) => {
   const { name, arguments: args } = request.params;
   
@@ -48,7 +47,6 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
     throw new Error(`Unknown tool: ${name}`);
   }
   
-  // Debug logging to see what we're receiving (set DEBUG=true to enable)
   if (process.env.DEBUG === 'true') {
     console.error('[MCP] tools/call:', { name, args });
   }
@@ -71,13 +69,11 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
     const result = await delegate(mode, input, context, maxTokens);
     const duration = Date.now() - startTime;
     
-    // Get provider and model info for metadata
     const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
     const delegateModel = ('DELEGATE_MODEL' in process.env)
       ? process.env.DELEGATE_MODEL
       : DELEGATE_MODEL;
     
-    // Log response metadata (not the full response to avoid console spam)
     const resultLength = result.length;
     const previewLength = 150;
     const preview = result.length > previewLength  
@@ -86,7 +82,6 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
     
     console.error(`[MCP] Response received: mode=${mode}, provider=${delegateProvider}, model=${delegateModel}, duration=${duration}ms, length=${resultLength} chars, preview="${preview.replace(/\n/g, '\\n')}"`);
     
-    // Check if result contains extracted thinking (JSON format)
     let content: Array<{ 
       type: string; 
       text: string; 
@@ -104,42 +99,37 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
         const thinkingLength = parsed.thinking.length;
         const contentLength = parsed.content.length;
         
-        // Log thinking extraction info
         console.error(`[MCP] Thinking extracted: thinking=${thinkingLength} chars, content=${contentLength} chars`);
         
-        // Return thinking and content as separate content blocks
-        // Use annotations to mark thinking as internal (assistant-only) and response as for both
         content = [
           {
             type: "text",
             text: parsed.thinking,
             annotations: {
-              audience: ["assistant"], // Thinking is internal reasoning for the calling model
-              priority: 0 // Lower priority - internal detail
+              audience: ["assistant"],
+              priority: 0
             }
           },
           {
             type: "text",
             text: parsed.content,
             annotations: {
-              audience: ["assistant", "user"], // Response is for both
-              priority: 1 // Higher priority - main content
+              audience: ["assistant", "user"],
+              priority: 1
             }
           }
         ];
       } else {
-        // Not extracted thinking format, return as-is
         content = [{ 
           type: "text", 
           text: result,
           annotations: {
             audience: ["assistant", "user"],
-            priority: 1 // Higher priority - main content
+            priority: 1
           }
         }];
       }
     } catch {
-      // Not JSON, return as-is
       content = [{ 
         type: "text", 
         text: result,
@@ -150,7 +140,6 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
       }];
     }
     
-    // Add metadata as a final content block (for the calling model's reference)
     const metadata = {
       provider: delegateProvider,
       model: delegateModel,
@@ -160,15 +149,14 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
       timestamp: new Date().toISOString()
     };
     
-    // Append metadata with a reminder about context isolation
     const metadataText = `[Metadata] Provider: ${metadata.provider}, Model: ${metadata.model}, Mode: ${metadata.mode}, Duration: ${metadata.durationMs}ms, Thinking extracted: ${metadata.hasThinking}, Timestamp: ${metadata.timestamp}\n\n⚠️ REMINDER: The external expert model that generated this response had NO access to your context, files, or conversation history. It only saw what you passed in the 'input' and 'context' parameters.`;
     
     content.push({
       type: "text",
       text: metadataText,
       annotations: {
-        audience: ["assistant"], // Metadata is for the calling model only
-        priority: 0 // Lowest priority - just reference info (MCP requires >= 0)
+        audience: ["assistant"],
+        priority: 0
       }
     });
     
@@ -187,8 +175,7 @@ export const toolsCallHandler = async (request: { params: { name: string; argume
   }
 };
 
-// Setup request handlers for an MCP server
-export function setupServerHandlers(server: any) {
+export function setupServerHandlers(server: Server) {
   server.setRequestHandler(ListToolsRequestSchema, toolsListHandler);
   server.setRequestHandler(CallToolRequestSchema, toolsCallHandler);
 }

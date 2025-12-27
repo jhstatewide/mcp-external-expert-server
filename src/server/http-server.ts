@@ -4,8 +4,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import cors from "cors";
+import type { Request, Response } from "express";
 import { setupServerHandlers } from "../handlers/mcp-handlers.js";
 import { MCP_HTTP_PORT } from "../config/index.js";
+import { SERVER_NAME, VERSION } from "../constants.js";
 
 export async function startHttpServer() {
   // Create Express app with MCP support (includes DNS rebinding protection)
@@ -30,8 +32,8 @@ export async function startHttpServer() {
   // Create a separate server instance for HTTP to avoid transport conflicts
   const httpServer = new Server(
     {
-      name: "mcp-external-expert",
-      version: "0.2.0",
+      name: SERVER_NAME,
+      version: VERSION,
     },
     {
       capabilities: {
@@ -42,26 +44,18 @@ export async function startHttpServer() {
  
   setupServerHandlers(httpServer);
  
-  // Create streamable HTTP transport (supports both SSE and direct HTTP)
-  // Try stateless mode first - MCP Inspector may work better without session management
-  // If this doesn't work, we can switch back to stateful mode
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined, // Stateless mode - no session validation
+    sessionIdGenerator: undefined, // Stateless mode
   });
- 
-  // Connect server to transport
+
   await httpServer.connect(transport);
- 
-  // Handle MCP requests via streamable HTTP transport
-  // The transport handles all HTTP methods (GET for SSE, POST for JSON-RPC, OPTIONS for CORS)
-  // Use a single handler that works for both /mcp and /sse endpoints
-  const handleTransportRequest = async (req: any, res: any) => {
+
+  // Transport handles GET (SSE), POST (JSON-RPC), and OPTIONS (CORS)
+  const handleTransportRequest = async (req: Request, res: Response) => {
     try {
-      // For GET/OPTIONS requests (SSE/CORS), there's no body
-      // For POST requests, body is already parsed by Express middleware
+      // GET/OPTIONS have no body; POST body is parsed by Express
       const body = (req.method === 'GET' || req.method === 'OPTIONS') ? undefined : req.body;
       
-      // Debug logging for troubleshooting (set DEBUG=true to enable)
       if (process.env.DEBUG === 'true') {
         console.error(`[MCP] ${req.method} ${req.url}`, {
           method: req.method,
@@ -69,12 +63,11 @@ export async function startHttpServer() {
         });
       }
       
-      // The transport's handleRequest method expects Node.js IncomingMessage/ServerResponse
       await transport.handleRequest(req, res, body);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[MCP] Error handling ${req.method} ${req.url}:`, errorMessage);
-      // Only send error response if headers haven't been sent (e.g., SSE stream not started)
+      
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: "2.0",
@@ -86,17 +79,13 @@ export async function startHttpServer() {
           }
         });
       } else {
-        // For SSE streams, log the error but don't try to send JSON
+        // SSE stream already started, can't send JSON
         console.error("Error in transport request:", errorMessage);
       }
     }
   };
   
-  // Handle all methods on /mcp endpoint (main MCP endpoint)
-  // This handles both regular HTTP POST and SSE GET requests
   app.all("/mcp", handleTransportRequest);
-  
-  // Also handle /sse endpoint for clients that use it explicitly
   app.all("/sse", handleTransportRequest);
   
   return new Promise<void>((resolve) => {
