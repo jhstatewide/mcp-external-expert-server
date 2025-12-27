@@ -13,6 +13,10 @@ This server enables:
 - Configurable via environment variables
 - Supports both STDIO (for desktop tools) and HTTP (for remote/shared usage)
 
+## How it works
+
+<img width="1024" alt="phone_a_friend_diagram" src="https://github.com/user-attachments/assets/aaa56024-9042-4689-8877-a2bbdc57e7d5" />
+
 ## Installation
 
 ```bash
