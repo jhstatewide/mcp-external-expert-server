@@ -4,6 +4,16 @@ An MCP (Model Context Protocol) server that allows a primary LLM to delegate sub
 
 Think of it like "phone a friend" - when the primary model needs help with planning, critique, or reasoning, it can call external expert models for assistance.
 
+## Installation
+
+Install from [npmjs.com](https://www.npmjs.com/package/mcp-external-expert):
+
+```bash
+npm install -g mcp-external-expert
+```
+
+That's it! The package is ready to use.
+
 ## Purpose
 
 This server enables:
@@ -16,12 +26,6 @@ This server enables:
 ## How it works
 
 <img width="1024" alt="phone_a_friend_diagram" src="https://github.com/user-attachments/assets/aaa56024-9042-4689-8877-a2bbdc57e7d5" />
-
-## Installation
-
-```bash
-npm install
-```
 
 ## Configuration
 
@@ -96,7 +100,12 @@ MCP_STDIO=true   # default
 
 ### Development
 
+For local development, clone the repository and install dependencies:
+
 ```bash
+git clone <repository-url>
+cd mcp-external-expert-server
+npm install
 npm run dev
 ```
 
