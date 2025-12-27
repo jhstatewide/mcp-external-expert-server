@@ -15,6 +15,9 @@ import { randomUUID } from "crypto";
 // Import utility functions
 import { redactSecrets, clampText, extractThinking } from "./utils/text-processing.js";
 
+// Import provider implementations
+import { callOllama, callOpenAICompat } from "./providers/index.js";
+
 // Configuration from environment variables
 const DELEGATE_PROVIDER = process.env.DELEGATE_PROVIDER || "ollama";
 const DELEGATE_BASE_URL = process.env.DELEGATE_BASE_URL || "http://localhost:11434";
@@ -44,111 +47,6 @@ const SYSTEM_PROMPTS = {
 const MCP_HTTP = process.env.MCP_HTTP === "true";
 const MCP_HTTP_PORT = parseInt(process.env.MCP_HTTP_PORT || "3333", 10);
 const MCP_STDIO = process.env.MCP_STDIO !== "false"; // default true
-
-// Provider implementations
-async function callOllama(
-  model: string,
-  systemPrompt: string,
-  userMessage: string,
-  maxTokens: number,
-  temperature: number,
-  maxChars?: number
-): Promise<string> {
-  const url = `${DELEGATE_BASE_URL}/api/chat`;
-  
-  // Calculate max tokens based on maxChars if provided
-  // Rough estimate: 1 token ≈ 4 characters for English text
-  // Use the smaller of: configured maxTokens or estimated from maxChars
-  let numPredict = maxTokens;
-  if (maxChars !== undefined) {
-    // Estimate tokens from characters (conservative: 1 token = 3.5 chars to account for longer tokens)
-    const estimatedTokens = Math.floor(maxChars / 3.5);
-    // Use the smaller value to ensure we don't exceed maxChars
-    numPredict = Math.min(maxTokens, estimatedTokens);
-  }
-  
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage }
-      ],
-      options: {
-        num_predict: numPredict,
-        temperature
-      },
-      stream: false
-    }),
-    signal: AbortSignal.timeout(DELEGATE_TIMEOUT_MS)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.message?.content || data.response || "";
-}
-
-async function callOpenAICompat(
-  model: string,
-  systemPrompt: string,
-  userMessage: string,
-  maxTokens: number,
-  temperature: number,
-  maxChars?: number
-): Promise<string> {
-  const url = `${DELEGATE_BASE_URL}${DELEGATE_OPENAI_PATH}`;
-  
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  
-  if (DELEGATE_API_KEY) {
-    headers["Authorization"] = `Bearer ${DELEGATE_API_KEY}`;
-  }
-  
-  // Calculate max tokens based on maxChars if provided
-  // Rough estimate: 1 token ≈ 4 characters for English text
-  // Use the smaller of: configured maxTokens or estimated from maxChars
-  let maxTokensToUse = maxTokens;
-  if (maxChars !== undefined) {
-    // Estimate tokens from characters (conservative: 1 token = 3.5 chars to account for longer tokens)
-    const estimatedTokens = Math.floor(maxChars / 3.5);
-    // Use the smaller value to ensure we don't exceed maxChars
-    maxTokensToUse = Math.min(maxTokens, estimatedTokens);
-  }
-  
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage }
-      ],
-      max_tokens: maxTokensToUse,
-      temperature,
-      stream: false
-    }),
-    signal: AbortSignal.timeout(DELEGATE_TIMEOUT_MS)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI-compatible API error: ${response.status} ${response.statusText} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
-}
 
 // Main delegate function
 export async function delegate(
@@ -532,7 +430,7 @@ async function start() {
         }
       }
     };
-  
+
     // Handle all methods on /mcp endpoint (main MCP endpoint)
     // This handles both regular HTTP POST and SSE GET requests
     app.all("/mcp", handleTransportRequest);
