@@ -48,14 +48,21 @@ const MCP_HTTP = process.env.MCP_HTTP === "true";
 const MCP_HTTP_PORT = parseInt(process.env.MCP_HTTP_PORT || "3333", 10);
 const MCP_STDIO = process.env.MCP_STDIO !== "false"; // default true
 
-// Main delegate function
+// Main delegate function - now using tokens ONLY, no character-based limits
+// Note: maxTokens parameter allows overriding the default DELEGATE_MAX_TOKENS for specific calls
 export async function delegate(
   mode: string,
   input: string,
   context?: string,
-  maxChars?: number
+  maxTokens?: number
 ): Promise<string> {
-  const maxCharsValue = maxChars || 12000;
+  // Use provided maxTokens or fall back to configured default
+  const maxTokensToUse = maxTokens || DELEGATE_MAX_TOKENS;
+  
+  // For backwards compatibility with existing text clamping, we'll use a reasonable character limit
+  // that should be safe for most token limits. This is a conservative estimate.
+  // Note: This is only for input/output clamping, not for token estimation.
+  const safeCharLimit = maxTokensToUse * 4; // Conservative: 1 token ≈ 4 chars for English
   
   // Read from process.env directly to support dynamic changes in tests
   // Check if the property exists in process.env (even if empty), otherwise use constant
@@ -84,8 +91,8 @@ export async function delegate(
   const isolationReminder = `[IMPORTANT: You are being called as a helper model. You have NO access to the calling model's context, files, or conversation history. You ONLY have the information provided below. Do not reference or assume knowledge of anything not explicitly stated here.]\n\n`;
   userMessage = isolationReminder + userMessage;
   
-  // Clamp input size
-  userMessage = clampText(userMessage, maxCharsValue);
+  // Clamp input size using safe character limit derived from token limit
+  userMessage = clampText(userMessage, safeCharLimit);
   
   // Redact secrets
   userMessage = redactSecrets(userMessage);
@@ -93,26 +100,23 @@ export async function delegate(
   // Read provider from process.env directly to support dynamic changes in tests
   const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
   
-  // Call appropriate provider
-  // Pass maxChars to help the model limit its output
+  // Call appropriate provider - now using tokens ONLY, no maxChars parameter
   let result: string;
   if (delegateProvider === "ollama") {
     result = await callOllama(
       delegateModel,
       systemPrompt,
       userMessage,
-      DELEGATE_MAX_TOKENS,
-      DELEGATE_TEMPERATURE,
-      maxCharsValue
+      maxTokensToUse,
+      DELEGATE_TEMPERATURE
     );
   } else if (delegateProvider === "openai_compat") {
     result = await callOpenAICompat(
       delegateModel,
       systemPrompt,
       userMessage,
-      DELEGATE_MAX_TOKENS,
-      DELEGATE_TEMPERATURE,
-      maxCharsValue
+      maxTokensToUse,
+      DELEGATE_TEMPERATURE
     );
   } else {
     throw new Error(`Unknown provider: ${delegateProvider}. Must be 'ollama' or 'openai_compat'`);
@@ -123,12 +127,12 @@ export async function delegate(
     const { thinking, content } = extractThinking(result);
     if (thinking) {
       // Return thinking separately - will be handled in the response
-      return JSON.stringify({ thinking, content: clampText(content, maxCharsValue) });
+      return JSON.stringify({ thinking, content: clampText(content, safeCharLimit) });
     }
   }
   
-  // Clamp result
-  return clampText(result, maxCharsValue);
+  // Clamp result using safe character limit
+  return clampText(result, safeCharLimit);
 }
 
 // Handler functions (shared between STDIO and HTTP)
@@ -154,9 +158,9 @@ const toolsListHandler = async () => {
               type: "string",
               description: "Optional context for the task. ⚠️ If you reference files, code, or previous conversations, you MUST paste that content here - the external expert model has NO other access to your context!"
             },
-            maxChars: {
+            maxTokens: {
               type: "number",
-              description: "Maximum characters for input/output (default: 12000)"
+              description: "Maximum tokens for model output (default: from DELEGATE_MAX_TOKENS env var, typically 800)"
             }
           },
           required: ["mode", "input"]
@@ -185,7 +189,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
   const mode = args.mode as string;
   const input = args.input as string;
   const context = args.context as string | undefined;
-  const maxChars = args.maxChars as number | undefined;
+  const maxTokens = args.maxTokens as number | undefined;
   
   if (!mode || !input) {
     throw new Error(`mode and input are required. Received: mode=${JSON.stringify(mode)}, input=${JSON.stringify(input)}`);
@@ -193,7 +197,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
   
   try {
     const startTime = Date.now();
-    const result = await delegate(mode, input, context, maxChars);
+    const result = await delegate(mode, input, context, maxTokens);
     const duration = Date.now() - startTime;
     
     // Get provider and model info for metadata
@@ -378,19 +382,19 @@ async function start() {
         },
       }
     );
-
+  
     setupServerHandlers(httpServer);
-    
+  
     // Create streamable HTTP transport (supports both SSE and direct HTTP)
     // Try stateless mode first - MCP Inspector may work better without session management
     // If this doesn't work, we can switch back to stateful mode
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // Stateless mode - no session validation
     });
-    
+  
     // Connect server to transport
     await httpServer.connect(transport);
-    
+  
     // Handle MCP requests via streamable HTTP transport
     // The transport handles all HTTP methods (GET for SSE, POST for JSON-RPC, OPTIONS for CORS)
     // Use a single handler that works for both /mcp and /sse endpoints
@@ -430,14 +434,14 @@ async function start() {
         }
       }
     };
-
+  
     // Handle all methods on /mcp endpoint (main MCP endpoint)
     // This handles both regular HTTP POST and SSE GET requests
     app.all("/mcp", handleTransportRequest);
     
     // Also handle /sse endpoint for clients that use it explicitly
     app.all("/sse", handleTransportRequest);
-
+  
     app.listen(MCP_HTTP_PORT, () => {
       console.error(`MCP External Expert Server running on HTTP/SSE at http://localhost:${MCP_HTTP_PORT}/mcp`);
       console.error(`  - Supports regular HTTP POST (JSON-RPC)`);

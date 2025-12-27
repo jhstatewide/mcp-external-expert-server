@@ -135,7 +135,7 @@ describe('delegate', () => {
     expect(body.messages[1].content).toContain('context info');
   });
 
-  it('should respect maxChars parameter', async () => {
+  it('should respect maxTokens parameter', async () => {
     const longInput = 'a'.repeat(20000);
     const mockResponse = {
       message: { content: 'Test response' }
@@ -149,7 +149,8 @@ describe('delegate', () => {
 
     const callArgs = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0];
     const body = JSON.parse(callArgs[1]?.body as string);
-    expect(body.messages[1].content.length).toBeLessThanOrEqual(100 + 20);
+    // With token-based approach, we check that the input was clamped appropriately
+    expect(body.messages[1].content.length).toBeLessThanOrEqual(100 * 4 + 20); // 100 tokens * 4 chars + truncation
   });
 
   it('should handle OpenAI-compatible provider', async () => {
