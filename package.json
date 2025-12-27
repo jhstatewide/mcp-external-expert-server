@@ -1,6 +1,6 @@
 {
   "name": "mcp-external-expert",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server that allows primary LLMs to delegate sub-tasks to external expert models via APIs (Ollama, OpenAI-compatible)",
   "type": "module",
   "main": "./dist/index.js",
