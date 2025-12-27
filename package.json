@@ -27,6 +27,10 @@
     "type": "git",
     "url": "https://github.com/jhstatewide/mcp-external-expert-server.git"
   },
+  "homepage": "https://github.com/jhstatewide/mcp-external-expert-server",
+  "bugs": {
+    "url": "https://github.com/jhstatewide/mcp-external-expert-server/issues"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
