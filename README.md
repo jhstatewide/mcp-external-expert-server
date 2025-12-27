@@ -176,8 +176,8 @@ Delegates a subtask to a helper model.
 
 **Modes:**
 - `plan` → step-by-step plan + assumptions + risks
-- `critic` → issues, severity, fixes
-- `critique` → devil's advocate mode - find flaws, weaknesses, edge cases, and potential problems
+- `review` → code review - identify bugs, quality issues, and provide fixes (code-specific)
+- `challenge` → devil's advocate - challenge ideas and find flaws in any concept/proposal (general)
 - `tests` → test checklist + edge cases
 - `explain` → concise explanation
 

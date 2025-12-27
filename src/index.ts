@@ -27,10 +27,10 @@ const DELEGATE_EXTRACT_THINKING = process.env.DELEGATE_EXTRACT_THINKING !== "fal
 const SYSTEM_PROMPTS = {
   plan: process.env.DELEGATE_SYSTEM_PLAN || 
     "You are a planning assistant. Provide a step-by-step plan, list assumptions, and identify risks.",
-  critic: process.env.DELEGATE_SYSTEM_CRITIC || 
-    "You are a code critic. Identify issues, rate their severity, and suggest fixes.",
-  critique: process.env.DELEGATE_SYSTEM_CRITIQUE || 
-    "You are a devil's advocate and critical reviewer. Your role is to find flaws, weaknesses, edge cases, and potential problems. Be thorough, skeptical, and challenge assumptions. Look for: logical errors, missing edge cases, performance issues, security vulnerabilities, scalability problems, maintainability concerns, and any other potential weaknesses. Be constructive but rigorous in your critique.",
+  review: process.env.DELEGATE_SYSTEM_REVIEW || 
+    "You are a code reviewer. Review the provided code and identify: bugs, code quality issues, potential improvements, and best practice violations. Rate severity and provide specific, actionable fixes. Focus on correctness, maintainability, and code quality.",
+  challenge: process.env.DELEGATE_SYSTEM_CHALLENGE || 
+    "You are a devil's advocate and critical thinker. Your role is to challenge ideas, find flaws, weaknesses, and potential problems in ANY proposal, plan, or concept (not just code). Be thorough, skeptical, and question assumptions. Look for: logical fallacies, missing considerations, edge cases, unintended consequences, scalability issues, and any other potential weaknesses. Be constructive but rigorous - your goal is to strengthen ideas by finding their weak points.",
   tests: process.env.DELEGATE_SYSTEM_TESTS || 
     "You are a test design assistant. Provide a test checklist and edge cases to consider.",
   explain: process.env.DELEGATE_SYSTEM_EXPLAIN || 
@@ -196,17 +196,22 @@ export async function delegate(
     throw new Error("DELEGATE_MODEL environment variable is required");
   }
 
-  if (!["plan", "critic", "critique", "explain", "tests"].includes(mode)) {
-    throw new Error(`Invalid mode: ${mode}. Must be one of: plan, critic, critique, explain, tests`);
+  if (!["plan", "review", "challenge", "explain", "tests"].includes(mode)) {
+    throw new Error(`Invalid mode: ${mode}. Must be one of: plan, review, challenge, explain, tests`);
   }
 
   const systemPrompt = SYSTEM_PROMPTS[mode as keyof typeof SYSTEM_PROMPTS];
   
-  // Build user message
+  // Build user message with explicit isolation reminder
+  // Add a reminder that this model has no access to the caller's context
   let userMessage = input;
   if (context) {
     userMessage = `Context:\n${context}\n\nTask:\n${input}`;
   }
+  
+  // Prepend isolation reminder to help the helper model understand its constraints
+  const isolationReminder = `[IMPORTANT: You are being called as a helper model. You have NO access to the calling model's context, files, or conversation history. You ONLY have the information provided below. Do not reference or assume knowledge of anything not explicitly stated here.]\n\n`;
+  userMessage = isolationReminder + userMessage;
   
   // Clamp input size
   userMessage = clampText(userMessage, maxCharsValue);
@@ -261,22 +266,22 @@ const toolsListHandler = async () => {
     tools: [
       {
         name: "delegate",
-        description: "Delegate a subtask to a helper model for planning, critique, testing, or explanation. Note: The helper model does NOT have access to the same context as the calling model - it only receives what is explicitly passed in the 'input' and 'context' parameters, plus its inherent training knowledge. It has no access to the caller's conversation history, file contents, or other context unless explicitly provided.",
+        description: "Delegate a subtask to a helper model for planning, critique, testing, or explanation.\n\n⚠️ CRITICAL: The helper model is COMPLETELY ISOLATED from your context. It CANNOT see:\n- Your conversation history\n- Any files you have open\n- Any code you're working on\n- Any previous tool results\n- Any context from your current session\n\nThe helper model ONLY receives:\n1. What you explicitly pass in the 'input' parameter\n2. What you explicitly pass in the 'context' parameter (if provided)\n3. Its own training knowledge (general knowledge only)\n\nYou MUST include ALL relevant information in 'input' or 'context' parameters. Do NOT assume the helper model can see anything else. If you reference files, code, or previous conversations, you MUST paste that content into the parameters.",
         inputSchema: {
           type: "object",
           properties: {
             mode: {
               type: "string",
-              enum: ["plan", "critic", "critique", "explain", "tests"],
-              description: "The type of delegation: plan (step-by-step plan), critic (code critique), critique (devil's advocate - find flaws/weaknesses), explain (explanation), tests (test design)"
+              enum: ["plan", "review", "challenge", "explain", "tests"],
+              description: "The type of delegation: plan (step-by-step plan), review (code review - bugs, quality, fixes), challenge (devil's advocate - challenge ideas/find flaws in any concept), explain (explanation), tests (test design)"
             },
             input: {
               type: "string",
-              description: "The input/task to delegate (required)"
+              description: "The input/task to delegate (required). ⚠️ CRITICAL: Include ALL relevant information here - the helper model cannot see your files, conversation history, or any other context!"
             },
             context: {
               type: "string",
-              description: "Optional context for the task"
+              description: "Optional context for the task. ⚠️ If you reference files, code, or previous conversations, you MUST paste that content here - the helper model has NO other access to your context!"
             },
             maxChars: {
               type: "number",
@@ -316,33 +321,95 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
   }
 
   try {
+    const startTime = Date.now();
     const result = await delegate(mode, input, context, maxChars);
+    const duration = Date.now() - startTime;
+    
+    // Get provider and model info for metadata
+    const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
+    const delegateModel = ('DELEGATE_MODEL' in process.env)
+      ? process.env.DELEGATE_MODEL
+      : DELEGATE_MODEL;
     
     // Check if result contains extracted thinking (JSON format)
-    let content: Array<{ type: string; text: string }> = [];
+    let content: Array<{ 
+      type: string; 
+      text: string; 
+      annotations?: { 
+        audience?: string[];
+        priority?: number;
+      } 
+    }> = [];
+    let hasThinking = false;
     
     try {
       const parsed = JSON.parse(result);
       if (parsed.thinking && parsed.content) {
-        // Return thinking and content as separate blocks
+        hasThinking = true;
+        // Return thinking and content as separate content blocks
+        // Use annotations to mark thinking as internal (assistant-only) and response as for both
         content = [
           {
             type: "text",
-            text: `[Thinking Process]\n${parsed.thinking}`
+            text: parsed.thinking,
+            annotations: {
+              audience: ["assistant"], // Thinking is internal reasoning for the calling model
+              priority: 0 // Lower priority - internal detail
+            }
           },
           {
             type: "text",
-            text: parsed.content
+            text: parsed.content,
+            annotations: {
+              audience: ["assistant", "user"], // Response is for both
+              priority: 1 // Higher priority - main content
+            }
           }
         ];
       } else {
         // Not extracted thinking format, return as-is
-        content = [{ type: "text", text: result }];
+        content = [{ 
+          type: "text", 
+          text: result,
+          annotations: {
+            audience: ["assistant", "user"],
+            priority: 1
+          }
+        }];
       }
     } catch {
       // Not JSON, return as-is
-      content = [{ type: "text", text: result }];
+      content = [{ 
+        type: "text", 
+        text: result,
+        annotations: {
+          audience: ["assistant", "user"],
+          priority: 1
+        }
+      }];
     }
+    
+    // Add metadata as a final content block (for the calling model's reference)
+    const metadata = {
+      provider: delegateProvider,
+      model: delegateModel,
+      mode: mode,
+      durationMs: duration,
+      hasThinking: hasThinking,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Append metadata with a reminder about context isolation
+    const metadataText = `[Metadata] Provider: ${metadata.provider}, Model: ${metadata.model}, Mode: ${metadata.mode}, Duration: ${metadata.durationMs}ms, Thinking extracted: ${metadata.hasThinking}, Timestamp: ${metadata.timestamp}\n\n⚠️ REMINDER: The helper model that generated this response had NO access to your context, files, or conversation history. It only saw what you passed in the 'input' and 'context' parameters.`;
+    
+    content.push({
+      type: "text",
+      text: metadataText,
+      annotations: {
+        audience: ["assistant"], // Metadata is for the calling model only
+        priority: -1 // Lowest priority - just reference info
+      }
+    });
     
     return { content };
   } catch (error) {
