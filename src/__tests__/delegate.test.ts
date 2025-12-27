@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { redactSecrets, clampText, delegate } from '../index.js';
+import { redactSecrets as redactSecretsUtil, clampText as clampTextUtil } from '../utils/text-processing.js';
 
 // Mock fetch globally
 global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
@@ -7,34 +8,34 @@ global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
 describe('redactSecrets', () => {
   it('should redact API keys starting with sk-', () => {
     const input = 'My API key is sk-123456789012345678901234567890';
-    const result = redactSecrets(input);
+    const result = redactSecretsUtil(input);
     expect(result).toContain('sk-***REDACTED***');
     expect(result).not.toContain('123456789012345678901234567890');
   });
 
   it('should redact Bearer tokens', () => {
     const input = 'Authorization: Bearer abc123def456ghi789jkl012mno345pqr678';
-    const result = redactSecrets(input);
+    const result = redactSecretsUtil(input);
     expect(result).toContain('Bearer ***REDACTED***');
     expect(result).not.toContain('abc123def456ghi789jkl012mno345pqr678');
   });
 
   it('should redact api_key patterns', () => {
     const input = 'api_key: secret12345678901234567890';
-    const result = redactSecrets(input);
+    const result = redactSecretsUtil(input);
     expect(result).toContain('api_key: ***REDACTED***');
     expect(result).not.toContain('secret12345678901234567890');
   });
 
   it('should not redact short strings', () => {
     const input = 'sk-short';
-    const result = redactSecrets(input);
+    const result = redactSecretsUtil(input);
     expect(result).toBe(input);
   });
 
   it('should handle text without secrets', () => {
     const input = 'This is normal text without any secrets';
-    const result = redactSecrets(input);
+    const result = redactSecretsUtil(input);
     expect(result).toBe(input);
   });
 });
@@ -42,25 +43,25 @@ describe('redactSecrets', () => {
 describe('clampText', () => {
   it('should return text unchanged if within limit', () => {
     const text = 'Short text';
-    const result = clampText(text, 100);
+    const result = clampTextUtil(text, 100);
     expect(result).toBe(text);
   });
 
   it('should clamp text exceeding limit', () => {
     const text = 'a'.repeat(200);
-    const result = clampText(text, 100);
+    const result = clampTextUtil(text, 100);
     expect(result.length).toBeLessThanOrEqual(100 + 20); // 100 chars + truncation message
     expect(result).toContain('[Truncated...]');
   });
 
   it('should handle exact limit', () => {
     const text = 'a'.repeat(100);
-    const result = clampText(text, 100);
+    const result = clampTextUtil(text, 100);
     expect(result).toBe(text);
   });
 
   it('should handle empty string', () => {
-    const result = clampText('', 100);
+    const result = clampTextUtil('', 100);
     expect(result).toBe('');
   });
 });
