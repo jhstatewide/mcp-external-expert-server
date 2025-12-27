@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mcp-external-expert-server": "./dist/index.js"
+    "mcp-external-expert-server": "dist/index.js"
   },
   "files": [
     "dist",
@@ -25,7 +25,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jhstatewide/mcp-external-expert-server.git"
+    "url": "git+https://github.com/jhstatewide/mcp-external-expert-server.git"
   },
   "homepage": "https://github.com/jhstatewide/mcp-external-expert-server",
   "bugs": {
