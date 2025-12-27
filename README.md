@@ -1,11 +1,13 @@
 # MCP Delegate Server
 
-An MCP (Model Context Protocol) server that allows a primary coding model to delegate sub-tasks to a secondary "helper" model.
+An MCP (Model Context Protocol) server that allows a primary LLM to delegate sub-tasks to a secondary "helper" model.
+
+Think of it like "phone a friend" - when the primary model needs help with planning, critique, or reasoning, it can call the helper model for assistance.
 
 ## Purpose
 
 This server enables:
-- Fast primary coding models (e.g., Qwen3 Coder) to delegate planning, critique, testing, and explanation tasks
+- Primary LLMs (e.g., Qwen3 Coder, Claude, GPT-4, etc.) to delegate planning, critique, testing, and explanation tasks
 - Avoids unloading/cache loss on the primary `llama-server`
 - Supports routing to Ollama or OpenAI-compatible endpoints
 - Configurable via environment variables
@@ -145,7 +147,7 @@ npm start
 ```bash
 DELEGATE_PROVIDER=openai_compat \
 DELEGATE_BASE_URL=http://localhost:8080 \
-DELEGATE_MODEL=qwen3-coder \
+DELEGATE_MODEL=qwen2.5:14b-instruct \
 DELEGATE_API_KEY="" \
 npm start
 ```
@@ -243,6 +245,7 @@ This is **MCP over HTTP** using the Streamable HTTP transport specification, whi
 
 - The helper model **must not** call tools recursively
 - The helper model output is returned as plain text
-- The main model decides *when* to delegate
+- The main model decides *when* to delegate (like "phoning a friend" when it needs help)
 - Delegation should be used sparingly (planning, critique, validation)
 - This avoids KV cache eviction on the primary inference host
+- The helper model is completely isolated - it only sees what the primary model explicitly passes to it

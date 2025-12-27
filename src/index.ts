@@ -331,6 +331,15 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
       ? process.env.DELEGATE_MODEL
       : DELEGATE_MODEL;
     
+    // Log response metadata (not the full response to avoid console spam)
+    const resultLength = result.length;
+    const previewLength = 150;
+    const preview = result.length > previewLength 
+      ? result.substring(0, previewLength) + '...' 
+      : result;
+    
+    console.error(`[MCP] Response received: mode=${mode}, provider=${delegateProvider}, model=${delegateModel}, duration=${duration}ms, length=${resultLength} chars, preview="${preview.replace(/\n/g, '\\n')}"`);
+    
     // Check if result contains extracted thinking (JSON format)
     let content: Array<{ 
       type: string; 
@@ -346,6 +355,12 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
       const parsed = JSON.parse(result);
       if (parsed.thinking && parsed.content) {
         hasThinking = true;
+        const thinkingLength = parsed.thinking.length;
+        const contentLength = parsed.content.length;
+        
+        // Log thinking extraction info
+        console.error(`[MCP] Thinking extracted: thinking=${thinkingLength} chars, content=${contentLength} chars`);
+        
         // Return thinking and content as separate content blocks
         // Use annotations to mark thinking as internal (assistant-only) and response as for both
         content = [
@@ -407,7 +422,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
       text: metadataText,
       annotations: {
         audience: ["assistant"], // Metadata is for the calling model only
-        priority: -1 // Lowest priority - just reference info
+        priority: 0 // Lowest priority - just reference info (MCP requires >= 0)
       }
     });
     
