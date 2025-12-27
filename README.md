@@ -1,13 +1,13 @@
-# MCP Delegate Server
+# MCP External Expert Server
 
-An MCP (Model Context Protocol) server that allows a primary LLM to delegate sub-tasks to a secondary "helper" model.
+An MCP (Model Context Protocol) server that allows a primary LLM to delegate sub-tasks to external expert models via APIs (Ollama, OpenAI-compatible).
 
-Think of it like "phone a friend" - when the primary model needs help with planning, critique, or reasoning, it can call the helper model for assistance.
+Think of it like "phone a friend" - when the primary model needs help with planning, critique, or reasoning, it can call external expert models for assistance.
 
 ## Purpose
 
 This server enables:
-- Primary LLMs (e.g., Qwen3 Coder, Claude, GPT-4, etc.) to delegate planning, critique, testing, and explanation tasks
+- Primary LLMs (e.g., Qwen3 Coder, Claude, GPT-4, etc.) to delegate planning, critique, testing, and explanation tasks to external expert models
 - Avoids unloading/cache loss on the primary `llama-server`
 - Supports routing to Ollama or OpenAI-compatible endpoints
 - Configurable via environment variables
@@ -164,12 +164,12 @@ MCP_HTTP=true MCP_HTTP_PORT=3333 npm start
 
 ### Tool: `delegate`
 
-Delegates a subtask to a helper model.
+Delegates a subtask to an external expert model.
 
 **Input Schema:**
 ```json
 {
-  "mode": "plan | critic | explain | tests",
+  "mode": "plan | review | challenge | explain | tests",
   "input": "string (required)",
   "context": "string (optional)",
   "maxChars": "number (optional, default 12000)"

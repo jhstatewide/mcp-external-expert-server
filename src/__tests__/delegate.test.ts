@@ -68,7 +68,6 @@ describe('clampText', () => {
 describe('delegate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Set required environment variables
     process.env.DELEGATE_MODEL = 'test-model';
     process.env.DELEGATE_PROVIDER = 'ollama';
     process.env.DELEGATE_BASE_URL = 'http://localhost:11434';
@@ -78,12 +77,10 @@ describe('delegate', () => {
 
   it('should throw error if DELEGATE_MODEL is not set', async () => {
     const originalModel = process.env.DELEGATE_MODEL;
-    // Set to empty string to simulate missing value
     process.env.DELEGATE_MODEL = '';
     try {
       await expect(delegate('plan', 'test input')).rejects.toThrow('DELEGATE_MODEL');
     } finally {
-      // Restore for other tests
       if (originalModel) {
         process.env.DELEGATE_MODEL = originalModel;
       } else {
@@ -93,7 +90,6 @@ describe('delegate', () => {
   });
 
   it('should throw error for invalid mode', async () => {
-    // Ensure DELEGATE_MODEL is set for this test
     process.env.DELEGATE_MODEL = 'test-model';
     await expect(delegate('invalid', 'test input')).rejects.toThrow('Invalid mode');
   });
@@ -167,7 +163,7 @@ describe('delegate', () => {
       json: async () => mockResponse,
     } as Response);
 
-    const result = await delegate('critic', 'test input');
+    const result = await delegate('challenge', 'test input');
 
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/v1/chat/completions'),
@@ -179,8 +175,8 @@ describe('delegate', () => {
   });
 
   it('should handle API errors', async () => {
-    // Ensure DELEGATE_MODEL is set for this test
     process.env.DELEGATE_MODEL = 'test-model';
+    
     (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
       ok: false,
       status: 500,

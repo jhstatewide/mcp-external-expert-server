@@ -140,7 +140,7 @@ async function callOpenAICompat(
   if (DELEGATE_API_KEY) {
     headers["Authorization"] = `Bearer ${DELEGATE_API_KEY}`;
   }
-
+  
   // Calculate max tokens based on maxChars if provided
   // Rough estimate: 1 token ≈ 4 characters for English text
   // Use the smaller of: configured maxTokens or estimated from maxChars
@@ -151,7 +151,7 @@ async function callOpenAICompat(
     // Use the smaller value to ensure we don't exceed maxChars
     maxTokensToUse = Math.min(maxTokens, estimatedTokens);
   }
-
+  
   const response = await fetch(url, {
     method: "POST",
     headers,
@@ -195,11 +195,11 @@ export async function delegate(
   if (!delegateModel || delegateModel.trim() === "") {
     throw new Error("DELEGATE_MODEL environment variable is required");
   }
-
+  
   if (!["plan", "review", "challenge", "explain", "tests"].includes(mode)) {
     throw new Error(`Invalid mode: ${mode}. Must be one of: plan, review, challenge, explain, tests`);
   }
-
+  
   const systemPrompt = SYSTEM_PROMPTS[mode as keyof typeof SYSTEM_PROMPTS];
   
   // Build user message with explicit isolation reminder
@@ -218,7 +218,7 @@ export async function delegate(
   
   // Redact secrets
   userMessage = redactSecrets(userMessage);
-
+  
   // Read provider from process.env directly to support dynamic changes in tests
   const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
   
@@ -246,7 +246,7 @@ export async function delegate(
   } else {
     throw new Error(`Unknown provider: ${delegateProvider}. Must be 'ollama' or 'openai_compat'`);
   }
-
+  
   // Extract thinking if enabled
   if (DELEGATE_EXTRACT_THINKING) {
     const { thinking, content } = extractThinking(result);
@@ -266,7 +266,7 @@ const toolsListHandler = async () => {
     tools: [
       {
         name: "delegate",
-        description: "Delegate a subtask to a helper model for planning, critique, testing, or explanation.\n\n⚠️ CRITICAL: The helper model is COMPLETELY ISOLATED from your context. It CANNOT see:\n- Your conversation history\n- Any files you have open\n- Any code you're working on\n- Any previous tool results\n- Any context from your current session\n\nThe helper model ONLY receives:\n1. What you explicitly pass in the 'input' parameter\n2. What you explicitly pass in the 'context' parameter (if provided)\n3. Its own training knowledge (general knowledge only)\n\nYou MUST include ALL relevant information in 'input' or 'context' parameters. Do NOT assume the helper model can see anything else. If you reference files, code, or previous conversations, you MUST paste that content into the parameters.",
+        description: "Delegate a subtask to an external expert model for planning, critique, testing, or explanation.\n\n⚠️ CRITICAL: The external expert model is COMPLETELY ISOLATED from your context. It CANNOT see:\n- Your conversation history\n- Any files you have open\n- Any code you're working on\n- Any previous tool results\n- Any context from your current session\n\nThe external expert model ONLY receives:\n1. What you explicitly pass in the 'input' parameter\n2. What you explicitly pass in the 'context' parameter (if provided)\n3. Its own training knowledge (general knowledge only)\n\nYou MUST include ALL relevant information in 'input' or 'context' parameters. Do NOT assume the external expert model can see anything else. If you reference files, code, or previous conversations, you MUST paste that content into the parameters.",
         inputSchema: {
           type: "object",
           properties: {
@@ -277,11 +277,11 @@ const toolsListHandler = async () => {
             },
             input: {
               type: "string",
-              description: "The input/task to delegate (required). ⚠️ CRITICAL: Include ALL relevant information here - the helper model cannot see your files, conversation history, or any other context!"
+              description: "The input/task to delegate (required). ⚠️ CRITICAL: Include ALL relevant information here - the external expert model cannot see your files, conversation history, or any other context!"
             },
             context: {
               type: "string",
-              description: "Optional context for the task. ⚠️ If you reference files, code, or previous conversations, you MUST paste that content here - the helper model has NO other access to your context!"
+              description: "Optional context for the task. ⚠️ If you reference files, code, or previous conversations, you MUST paste that content here - the external expert model has NO other access to your context!"
             },
             maxChars: {
               type: "number",
@@ -297,29 +297,29 @@ const toolsListHandler = async () => {
 
 const toolsCallHandler = async (request: { params: { name: string; arguments?: any } }) => {
   const { name, arguments: args } = request.params;
-
+  
   if (name !== "delegate") {
     throw new Error(`Unknown tool: ${name}`);
   }
-
+  
   // Debug logging to see what we're receiving (set DEBUG=true to enable)
   if (process.env.DEBUG === 'true') {
     console.error('[MCP] tools/call:', { name, args });
   }
-
+  
   if (!args || typeof args !== "object") {
     throw new Error(`Invalid arguments: ${JSON.stringify(args)}`);
   }
-
+  
   const mode = args.mode as string;
   const input = args.input as string;
   const context = args.context as string | undefined;
   const maxChars = args.maxChars as number | undefined;
-
+  
   if (!mode || !input) {
     throw new Error(`mode and input are required. Received: mode=${JSON.stringify(mode)}, input=${JSON.stringify(input)}`);
   }
-
+  
   try {
     const startTime = Date.now();
     const result = await delegate(mode, input, context, maxChars);
@@ -334,7 +334,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
     // Log response metadata (not the full response to avoid console spam)
     const resultLength = result.length;
     const previewLength = 150;
-    const preview = result.length > previewLength 
+    const preview = result.length > previewLength  
       ? result.substring(0, previewLength) + '...' 
       : result;
     
@@ -388,7 +388,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
           text: result,
           annotations: {
             audience: ["assistant", "user"],
-            priority: 1
+            priority: 1 // Higher priority - main content
           }
         }];
       }
@@ -415,7 +415,7 @@ const toolsCallHandler = async (request: { params: { name: string; arguments?: a
     };
     
     // Append metadata with a reminder about context isolation
-    const metadataText = `[Metadata] Provider: ${metadata.provider}, Model: ${metadata.model}, Mode: ${metadata.mode}, Duration: ${metadata.durationMs}ms, Thinking extracted: ${metadata.hasThinking}, Timestamp: ${metadata.timestamp}\n\n⚠️ REMINDER: The helper model that generated this response had NO access to your context, files, or conversation history. It only saw what you passed in the 'input' and 'context' parameters.`;
+    const metadataText = `[Metadata] Provider: ${metadata.provider}, Model: ${metadata.model}, Mode: ${metadata.mode}, Duration: ${metadata.durationMs}ms, Thinking extracted: ${metadata.hasThinking}, Timestamp: ${metadata.timestamp}\n\n⚠️ REMINDER: The external expert model that generated this response had NO access to your context, files, or conversation history. It only saw what you passed in the 'input' and 'context' parameters.`;
     
     content.push({
       type: "text",
@@ -450,7 +450,7 @@ function setupServerHandlers(server: Server) {
 // Create MCP server for STDIO
 const server = new Server(
   {
-    name: "mcp-delegate",
+    name: "mcp-external-expert",
     version: "0.2.0",
   },
   {
@@ -468,13 +468,13 @@ async function start() {
   if (process.env.NODE_ENV === 'test') {
     return;
   }
-
+  
   if (MCP_STDIO) {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("MCP Delegate Server running on STDIO");
+    console.error("MCP External Expert Server running on STDIO");
   }
-
+  
   if (MCP_HTTP) {
     // Create Express app with MCP support (includes DNS rebinding protection)
     const app = createMcpExpressApp();
@@ -498,7 +498,7 @@ async function start() {
     // Create a separate server instance for HTTP to avoid transport conflicts
     const httpServer = new Server(
       {
-        name: "mcp-delegate",
+        name: "mcp-external-expert",
         version: "0.2.0",
       },
       {
@@ -559,7 +559,7 @@ async function start() {
         }
       }
     };
-
+  
     // Handle all methods on /mcp endpoint (main MCP endpoint)
     // This handles both regular HTTP POST and SSE GET requests
     app.all("/mcp", handleTransportRequest);
@@ -568,13 +568,13 @@ async function start() {
     app.all("/sse", handleTransportRequest);
 
     app.listen(MCP_HTTP_PORT, () => {
-      console.error(`MCP Delegate Server running on HTTP/SSE at http://localhost:${MCP_HTTP_PORT}/mcp`);
+      console.error(`MCP External Expert Server running on HTTP/SSE at http://localhost:${MCP_HTTP_PORT}/mcp`);
       console.error(`  - Supports regular HTTP POST (JSON-RPC)`);
       console.error(`  - Supports SSE (Server-Sent Events) streaming`);
       console.error(`  - Compatible with MCP Inspector, Goose Desktop, Cursor, and other MCP clients`);
     });
   }
-
+  
   if (!MCP_STDIO && !MCP_HTTP) {
     console.error("Error: At least one transport (STDIO or HTTP) must be enabled");
     process.exit(1);
