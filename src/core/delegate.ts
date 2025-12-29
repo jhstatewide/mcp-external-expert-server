@@ -17,46 +17,46 @@ export async function delegate(
   context?: string,
   maxTokens?: number
 ): Promise<string> {
-  const maxTokensToUse = maxTokens 
+  const maxTokensToUse = maxTokens
     ? Math.max(1, Math.min(100000, maxTokens))
     : DELEGATE_MAX_TOKENS;
-  
-  // Character limit for input/output clamping (conservative: 1 token ≈ 4 chars)
-  const safeCharLimit = maxTokensToUse * 4;
-  
+
+  // Character limit for input/output clamping (generous: 1 token ≈ 6 chars to account for longer tokens)
+  const safeCharLimit = maxTokensToUse * 6;
+
   // Read from process.env directly to support dynamic changes in tests
   // Check if the property exists in process.env (even if empty), otherwise use constant
   const delegateModel = ('DELEGATE_MODEL' in process.env)
     ? process.env.DELEGATE_MODEL
     : DELEGATE_MODEL;
-  
+
   if (!delegateModel || delegateModel.trim() === "") {
     throw new Error("DELEGATE_MODEL environment variable is required");
   }
-  
+
   const validModes = ["plan", "review", "challenge", "explain", "tests"] as const;
   if (!validModes.includes(mode as typeof validModes[number])) {
     throw new Error(`Invalid mode: ${mode}. Must be one of: ${validModes.join(", ")}`);
   }
-  
+
   if (!input || typeof input !== "string" || input.trim() === "") {
     throw new Error("Input must be a non-empty string");
   }
-  
+
   const systemPrompt = SYSTEM_PROMPTS[mode as keyof typeof SYSTEM_PROMPTS];
-  
+
   let userMessage = input;
   if (context) {
     userMessage = `Context:\n${context}\n\nTask:\n${input}`;
   }
-  
+
   // Remind helper model it has no access to caller's context
   const isolationReminder = `[IMPORTANT: You are being called as a helper model. You have NO access to the calling model's context, files, or conversation history. You ONLY have the information provided below. Do not reference or assume knowledge of anything not explicitly stated here.]\n\n`;
   userMessage = isolationReminder + userMessage;
-  
+
   userMessage = clampText(userMessage, safeCharLimit);
   userMessage = redactSecrets(userMessage);
-  
+
   // Read from process.env to support dynamic changes in tests
   const delegateProvider = process.env.DELEGATE_PROVIDER || DELEGATE_PROVIDER;
   let result: string;
@@ -79,13 +79,15 @@ export async function delegate(
   } else {
     throw new Error(`Unknown provider: ${delegateProvider}. Must be 'ollama' or 'openai_compat'`);
   }
-  
+
   if (DELEGATE_EXTRACT_THINKING) {
     const { thinking, content } = extractThinking(result);
     if (thinking) {
-      return JSON.stringify({ thinking, content: clampText(content, safeCharLimit) });
+      // Don't clamp content - API already respects max_tokens
+      return JSON.stringify({ thinking, content });
     }
   }
-  
-  return clampText(result, safeCharLimit);
+
+  // Don't clamp result - API already respects max_tokens
+  return result;
 }

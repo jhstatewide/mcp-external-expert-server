@@ -29,26 +29,26 @@ setupServerHandlers(server);
 
 async function start() {
   validateConfiguration();
-  
+
   if (process.env.NODE_ENV === 'test') {
     return;
   }
-  
+
   const promises = [];
-  
+
   if (MCP_STDIO) {
     const transport = new StdioServerTransport();
     promises.push(
       server.connect(transport).then(() => {
-        console.error("MCP External Expert Server running on STDIO");
+        console.error(`MCP External Expert Server v${VERSION} running on STDIO`);
       })
     );
   }
-  
+
   if (MCP_HTTP) {
     promises.push(startHttpServer());
   }
-  
+
   await Promise.all(promises);
 }
 
