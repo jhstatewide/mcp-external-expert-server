@@ -8,6 +8,7 @@ import {
   DELEGATE_MAX_TOKENS,
   DELEGATE_TEMPERATURE,
   DELEGATE_EXTRACT_THINKING,
+  DELEGATE_MAX_INPUT_CHARS,
   SYSTEM_PROMPTS
 } from "../config/index.js";
 
@@ -21,8 +22,8 @@ export async function delegate(
     ? Math.max(1, Math.min(100000, maxTokens))
     : DELEGATE_MAX_TOKENS;
 
-  // Character limit for input/output clamping (generous: 1 token ≈ 6 chars to account for longer tokens)
-  const safeCharLimit = maxTokensToUse * 6;
+  // Use separate input size limit (not tied to output tokens) for large code reviews
+  const inputCharLimit = DELEGATE_MAX_INPUT_CHARS;
 
   // Read from process.env directly to support dynamic changes in tests
   // Check if the property exists in process.env (even if empty), otherwise use constant
@@ -54,7 +55,8 @@ export async function delegate(
   const isolationReminder = `[IMPORTANT: You are being called as a helper model. You have NO access to the calling model's context, files, or conversation history. You ONLY have the information provided below. Do not reference or assume knowledge of anything not explicitly stated here.]\n\n`;
   userMessage = isolationReminder + userMessage;
 
-  userMessage = clampText(userMessage, safeCharLimit);
+  // Clamp input to configured limit (allows large code files for review)
+  userMessage = clampText(userMessage, inputCharLimit);
   userMessage = redactSecrets(userMessage);
 
   // Read from process.env to support dynamic changes in tests

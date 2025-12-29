@@ -1,6 +1,6 @@
 // Ollama provider implementation for MCP External Expert Server
 
-import { DELEGATE_BASE_URL, DELEGATE_TIMEOUT_MS } from '../config/index.js';
+import { DELEGATE_BASE_URL, DELEGATE_TIMEOUT_MS, DELEGATE_CONTEXT_SIZE } from '../config/index.js';
 
 export async function callOllama(
   model: string,
@@ -27,6 +27,7 @@ export async function callOllama(
         ],
         options: {
           num_predict: numPredict,
+          num_ctx: DELEGATE_CONTEXT_SIZE,
           temperature
         },
         stream: false
@@ -41,11 +42,11 @@ export async function callOllama(
 
     const data = await response.json();
     const content = data.message?.content || data.response || "";
-    
+
     if (!content) {
       throw new Error("Ollama API returned empty response");
     }
-    
+
     return content;
   } catch (error) {
     if (error instanceof Error) {

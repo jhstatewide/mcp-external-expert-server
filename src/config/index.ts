@@ -48,6 +48,10 @@ export const DELEGATE_TIMEOUT_MS = parseIntSafe(process.env.DELEGATE_TIMEOUT_MS,
 export const DELEGATE_MAX_TOKENS = parseIntSafe(process.env.DELEGATE_MAX_TOKENS, 32000, 1, 100000); // 1 to 100k tokens
 export const DELEGATE_TEMPERATURE = parseFloatSafe(process.env.DELEGATE_TEMPERATURE, 0.2, 0, 2); // 0 to 2
 export const DELEGATE_EXTRACT_THINKING = process.env.DELEGATE_EXTRACT_THINKING !== "false"; // default true
+// Ollama context window size (num_ctx) - default 32k tokens for large code reviews
+export const DELEGATE_CONTEXT_SIZE = parseIntSafe(process.env.DELEGATE_CONTEXT_SIZE, 32768, 512, 1000000); // 512 to 1M tokens
+// Maximum input size in characters (separate from output tokens) - default 2MB
+export const DELEGATE_MAX_INPUT_CHARS = parseIntSafe(process.env.DELEGATE_MAX_INPUT_CHARS, 2097152, 1000, 10000000); // 1KB to 10MB
 
 // Mode-specific system prompts
 export const SYSTEM_PROMPTS = {
