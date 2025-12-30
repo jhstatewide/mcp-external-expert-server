@@ -9,9 +9,24 @@ export async function callOpenAICompat(
   maxTokens: number,
   temperature: number
 ): Promise<string> {
-  const baseUrl = DELEGATE_BASE_URL.replace(/\/$/, '');
-  const path = DELEGATE_OPENAI_PATH.startsWith('/') ? DELEGATE_OPENAI_PATH : `/${DELEGATE_OPENAI_PATH}`;
+  // Normalize base URL: remove trailing slash
+  let baseUrl = DELEGATE_BASE_URL.replace(/\/$/, '');
+  
+  // Normalize path: ensure it starts with /
+  let path = DELEGATE_OPENAI_PATH.startsWith('/') ? DELEGATE_OPENAI_PATH : `/${DELEGATE_OPENAI_PATH}`;
+  
+  // If base URL already ends with /v1, and path starts with /v1, remove the duplicate
+  // This handles cases where users set DELEGATE_BASE_URL to include /v1/
+  if (baseUrl.endsWith('/v1') && path.startsWith('/v1/')) {
+    path = path.substring(3); // Remove '/v1' prefix from path
+  }
+  
   const url = `${baseUrl}${path}`;
+
+  if (process.env.DEBUG === 'true') {
+    console.error(`[OpenAI Compat] Request URL: ${url}`);
+    console.error(`[OpenAI Compat] Model: ${model}, Max tokens: ${maxTokens}, Timeout: ${DELEGATE_TIMEOUT_MS}ms`);
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -40,7 +55,7 @@ export async function callOpenAICompat(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unable to read error response");
-      throw new Error(`OpenAI-compatible API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`OpenAI-compatible API error (${url}): ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -61,8 +76,8 @@ export async function callOpenAICompat(
       if (error.name === "TimeoutError" || error.message.includes("timeout")) {
         throw new Error(`OpenAI-compatible API request timed out after ${DELEGATE_TIMEOUT_MS}ms`);
       }
-      if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED")) {
-        throw new Error(`Failed to connect to OpenAI-compatible API at ${url}. Is the server running?`);
+      if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED") || error.message.includes("ENOTFOUND")) {
+        throw new Error(`Failed to connect to OpenAI-compatible API at ${url}. Is the server running and accessible? Check DELEGATE_BASE_URL and network connectivity.`);
       }
       // Re-throw if it's already our formatted error
       if (error.message.includes("OpenAI-compatible API error") || error.message.includes("truncated")) {

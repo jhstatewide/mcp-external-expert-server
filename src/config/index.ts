@@ -38,12 +38,84 @@ function validateUrl(url: string): boolean {
   }
 }
 
+// Extract hostname from URL
+function extractHostname(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname;
+  } catch {
+    return "localhost";
+  }
+}
+
+// Generate tool name from model and hostname
+function generateToolName(model: string, baseUrl: string): string {
+  const hostname = extractHostname(baseUrl);
+  
+  // Sanitize model name: remove slashes, colons, special chars, replace with underscores
+  const sanitizedModel = model
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  
+  // Sanitize hostname: remove dots, replace with underscores
+  const sanitizedHost = hostname
+    .replace(/\./g, '_')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  
+  // Combine: expert_host_model (max 59 chars to stay under 60)
+  const toolName = `expert_${sanitizedHost}_${sanitizedModel}`;
+  
+  // Truncate if too long, prioritizing model name (more important for identification)
+  if (toolName.length >= 60) {
+    const prefix = "expert_";
+    const separator = "_";
+    
+    // Calculate available space: 59 total - prefix - separator
+    const availableSpace = 59 - prefix.length - separator.length;
+    
+    // If hostname is very long, truncate it first
+    let hostPart = sanitizedHost;
+    let modelPart = sanitizedModel;
+    
+    // Limit hostname to reasonable size (max 25 chars or 40% of available space)
+    const maxHostLength = Math.min(25, Math.floor(availableSpace * 0.4));
+    if (hostPart.length > maxHostLength) {
+      hostPart = hostPart.substring(0, maxHostLength);
+    }
+    
+    // Calculate remaining space for model
+    const remainingForModel = availableSpace - hostPart.length;
+    
+    if (remainingForModel > 0) {
+      // Truncate model to fit in remaining space
+      if (modelPart.length > remainingForModel) {
+        modelPart = modelPart.substring(0, remainingForModel);
+      }
+      return `${prefix}${hostPart}${separator}${modelPart}`;
+    } else {
+      // Hostname took all space, just use model name (truncated)
+      const maxModelLength = 59 - prefix.length;
+      return prefix + modelPart.substring(0, maxModelLength);
+    }
+  }
+  
+  return toolName;
+}
+
 // Configuration from environment variables
 export const DELEGATE_PROVIDER = process.env.DELEGATE_PROVIDER || "ollama";
 export const DELEGATE_BASE_URL = process.env.DELEGATE_BASE_URL || "http://localhost:11434";
 export const DELEGATE_MODEL = process.env.DELEGATE_MODEL || "";
 export const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || "";
 export const DELEGATE_OPENAI_PATH = process.env.DELEGATE_OPENAI_PATH || "/v1/chat/completions";
+// Generate default tool name from model and hostname if not explicitly set
+const explicitToolName = process.env.MCP_TOOL_NAME || "";
+const defaultModel = process.env.DELEGATE_MODEL || "";
+const defaultBaseUrl = process.env.DELEGATE_BASE_URL || "http://localhost:11434";
+export const MCP_TOOL_NAME = explicitToolName || (defaultModel ? generateToolName(defaultModel, defaultBaseUrl) : "");
 export const DELEGATE_TIMEOUT_MS = parseIntSafe(process.env.DELEGATE_TIMEOUT_MS, 60000, 1000, 600000); // 1s to 10min
 export const DELEGATE_MAX_TOKENS = parseIntSafe(process.env.DELEGATE_MAX_TOKENS, 32000, 1, 100000); // 1 to 100k tokens
 export const DELEGATE_TEMPERATURE = parseFloatSafe(process.env.DELEGATE_TEMPERATURE, 0.2, 0, 2); // 0 to 2
@@ -76,6 +148,14 @@ export const MCP_STDIO = process.env.MCP_STDIO !== "false"; // default true
 export function validateConfiguration() {
   if (!DELEGATE_MODEL || DELEGATE_MODEL.trim() === "") {
     throw new Error("DELEGATE_MODEL environment variable is required");
+  }
+
+  if (!MCP_TOOL_NAME || MCP_TOOL_NAME.trim() === "") {
+    throw new Error("MCP_TOOL_NAME is required. It can be set explicitly via MCP_TOOL_NAME env var, or will be auto-generated from DELEGATE_MODEL and DELEGATE_BASE_URL if DELEGATE_MODEL is set.");
+  }
+
+  if (MCP_TOOL_NAME.length >= 60) {
+    throw new Error(`MCP_TOOL_NAME must be less than 60 characters, got ${MCP_TOOL_NAME.length} characters: ${MCP_TOOL_NAME}`);
   }
 
   if (!validateUrl(DELEGATE_BASE_URL)) {

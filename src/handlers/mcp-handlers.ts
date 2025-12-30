@@ -4,25 +4,32 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { delegate } from "../core/delegate.js";
 import { redactSecrets, clampText } from "../utils/text-processing.js";
-import { DELEGATE_PROVIDER, DELEGATE_MODEL } from "../config/index.js";
+import { DELEGATE_PROVIDER, DELEGATE_MODEL, MCP_TOOL_NAME } from "../config/index.js";
 
 export const toolsListHandler = async () => {
+  const toolName = process.env.MCP_TOOL_NAME || MCP_TOOL_NAME;
+  if (!toolName || toolName.trim() === "") {
+    throw new Error("MCP_TOOL_NAME environment variable is required");
+  }
+  if (toolName.length >= 60) {
+    throw new Error(`MCP_TOOL_NAME must be less than 60 characters, got ${toolName.length} characters: ${toolName}`);
+  }
   return {
     tools: [
       {
-        name: "delegate",
-        description: "Delegate a subtask to an external expert model for planning, critique, testing, or explanation.\n\n⚠️ CRITICAL: The external expert model is COMPLETELY ISOLATED from your context. It CANNOT see:\n- Your conversation history\n- Any files you have open\n- Any code you're working on\n- Any previous tool results\n- Any context from your current session\n\nThe external expert model ONLY receives:\n1. What you explicitly pass in the 'input' parameter\n2. What you explicitly pass in the 'context' parameter (if provided)\n3. Its own training knowledge (general knowledge only)\n\nYou MUST include ALL relevant information in 'input' or 'context' parameters. Do NOT assume the external expert model can see anything else. If you reference files, code, or previous conversations, you MUST paste that content into the parameters.",
+        name: toolName,
+        description: "Consult an external expert model for planning, critique, testing, or explanation.\n\n⚠️ CRITICAL: The external expert model is COMPLETELY ISOLATED from your context. It CANNOT see:\n- Your conversation history\n- Any files you have open\n- Any code you're working on\n- Any previous tool results\n- Any context from your current session\n\nThe external expert model ONLY receives:\n1. What you explicitly pass in the 'input' parameter\n2. What you explicitly pass in the 'context' parameter (if provided)\n3. Its own training knowledge (general knowledge only)\n\nYou MUST include ALL relevant information in 'input' or 'context' parameters. Do NOT assume the external expert model can see anything else. If you reference files, code, or previous conversations, you MUST paste that content into the parameters.",
         inputSchema: {
           type: "object",
           properties: {
             mode: {
               type: "string",
               enum: ["plan", "review", "challenge", "explain", "tests"],
-              description: "The type of delegation: plan (step-by-step plan), review (code review - bugs, quality, fixes), challenge (devil's advocate - challenge ideas/find flaws in any concept), explain (explanation), tests (test design)"
+              description: "The type of consultation: plan (step-by-step plan), review (code review - bugs, quality, fixes), challenge (devil's advocate - challenge ideas/find flaws in any concept), explain (explanation), tests (test design)"
             },
             input: {
               type: "string",
-              description: "The input/task to delegate (required). ⚠️ CRITICAL: Include ALL relevant information here - the external expert model cannot see your files, conversation history, or any other context!"
+              description: "The input/task to consult the expert about (required). ⚠️ CRITICAL: Include ALL relevant information here - the external expert model cannot see your files, conversation history, or any other context!"
             },
             context: {
               type: "string",
@@ -42,9 +49,17 @@ export const toolsListHandler = async () => {
 
 export const toolsCallHandler = async (request: { params: { name: string; arguments?: any } }) => {
   const { name, arguments: args } = request.params;
+  const toolName = process.env.MCP_TOOL_NAME || MCP_TOOL_NAME;
+  
+  if (!toolName || toolName.trim() === "") {
+    throw new Error("MCP_TOOL_NAME environment variable is required");
+  }
+  if (toolName.length >= 60) {
+    throw new Error(`MCP_TOOL_NAME must be less than 60 characters, got ${toolName.length} characters: ${toolName}`);
+  }
 
-  if (name !== "delegate") {
-    throw new Error(`Unknown tool: ${name}`);
+  if (name !== toolName) {
+    throw new Error(`Unknown tool: ${name} (expected: ${toolName})`);
   }
 
   if (process.env.DEBUG === 'true') {
